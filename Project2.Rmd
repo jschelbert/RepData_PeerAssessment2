@@ -1,0 +1,107 @@
+---
+title: "Course Project 2 - Analysis of Storm Data"
+author: "Jakob Schelbert"
+date: "10 November 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Review criteria
+* Has either a (1) valid RPubs URL pointing to a data analysis document for this assignment been submitted; or (2) a * lete PDF file presenting the data analysis been uploaded?
+* Is the document written in English?
+* Does the analysis include description and justification for any data transformations?
+* Does the document have a title that briefly summarizes the data analysis?
+* Does the document have a synopsis that describes and summarizes the data analysis in less than 10 sentences?
+* Is there a section titled "Data Processing" that describes how the data were loaded into R and processed for * ysis?
+* Is there a section titled "Results" where the main results are presented?
+* Is there at least one figure in the document that contains a plot?
+* Are there at most 3 figures in this document?
+* Does the analysis start from the raw data file (i.e. the original .csv.bz2 file)?
+* Does the analysis address the question of which types of events are most harmful to population health?
+* Does the analysis address the question of which types of events have the greatest economic consequences?
+* Do all the results of the analysis (i.e. figures, tables, numerical summaries) appear to be reproducible?
+* Do the figure(s) have descriptive captions (i.e. there is a description near the figure of what is happening in the * re)?
+* As far as you can determine, does it appear that the work submitted for this project is the work of the student who submitted it?
+
+
+
+## Synopsis
+This report deals with the effects of severe weather events and gives some implications for future countermeasures.
+Using the *Storm Data* from the National Weather Service, we investigate which types of weather events have the biggest impact on the health of the population and economic consequences.
+
+Zusammenfassung...
+Does the document have a synopsis that describes and summarizes the data analysis in less than 10 sentences?
+
+## Used packages
+
+```{r packages, message=FALSE}
+library(dplyr)
+library(data.table)
+library(ggplot2)
+```
+
+
+## Data Processing
+We download the data from the website (or use the code below to download it) and load it into *R*.
+```{r data-processing}
+url <-"https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+datafile <- "repdata_data_StormData.csv.bz2"
+if (!file.exists(datafile)) {
+  download.file(url, datafile)
+}
+  
+# TODO: Check fread possibility to load the zipped file!
+data_raw <- read.csv("repdata_data_StormData.csv.bz2")
+
+# TODO: Convert the costs to one exponent (i.e. 25K = 25.000)
+data <- data.table(data_raw)
+data <- data %>% mutate(property_damage = 0.0, crop_damage = 0.0)
+
+exponents_list <- list(list("K", 1000), list("M", 1000000), list("B", 1000000000), 
+                       list("k", 1000), list("m", 1000000), list("b", 1000000000), list("",1))
+
+for(i in exponents_list){
+  exponent_identifier <- i[[1]]
+  exponent_multiplier <- i[[2]]
+  data[data$PROPDMGEXP==exponent_identifier,"property_damage"] <- data[data$PROPDMGEXP==exponent_identifier,"PROPDMG"] * exponent_multiplier
+  data[data$CROPDMGEXP==exponent_identifier,"crop_damage"] <- data[data$CROPDMGEXP==exponent_identifier,"CROPDMG"] * exponent_multiplier
+}
+
+
+```
+
+In order to be able to compare the different weather events to each other, we use an aggregated score for harmfulness towards public health.
+This score is computed from the number of deaths and injuries that originate from each event.
+```{r health_score}
+death_factor <- 5.0
+injury_factor <- 1.0
+data <- data %>% mutate(health_impact_score = death_factor * FATALITIES + injury_factor * INJURIES)
+```
+
+For the economic impact we use the sum of the property damage and the crop damage which is stored in the variable *economy_damage*
+```{r economic_damage}
+data <- data %>% mutate(economy_damage = property_damage + crop_damage)
+```
+
+## Results
+
+```{r economic_impact}
+eco_summary <- data %>% group_by(EVTYPE) %>% summarize(number_of_events = n(), sum_economic_damage = sum(economy_damage), mean_economic_damage = mean(economy_damage), sd_economic_damage = sd(economy_damage), mad_economic_damage = mad(economy_damage)) %>% arrange(desc(mean_economic_damage))
+```
+
+
+
+```{r health_impact}
+health_summary <- data %>% group_by(EVTYPE) %>% summarize(number_of_events = n(), sum_deaths = sum(FATALITIES), sum_injuries = sum(INJURIES), mean_deaths = mean(FATALITIES), mean_injuries = mean(INJURIES), sd_deaths = sd(FATALITIES), sd_injuries = sd(INJURIES), mad_deaths = mad(FATALITIES), mad_injuries = mad(INJURIES), sum_score = sum(health_impact_score), mean_score = mean(health_impact_score), sd_score = sd(health_impact_score), mad_score = mad(health_impact_score))
+```
+
+## Appendix
+
+### System setup and used package versions
+```{r}
+sessionInfo()
+```
+
