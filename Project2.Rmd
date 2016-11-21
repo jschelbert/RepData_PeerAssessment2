@@ -1,7 +1,7 @@
 ---
-title: "Course Project 2 - Analysis of Storm Data"
+title: "Analysis of severe weather data - Impact on public health and economy"
 author: "Jakob Schelbert"
-date: "10 November 2016"
+date: "November 2016"
 output: html_document
 ---
 
@@ -9,76 +9,61 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# Review criteria
-* Has either a (1) valid RPubs URL pointing to a data analysis document for this assignment been submitted; or (2) a * lete PDF file presenting the data analysis been uploaded?
-* Is the document written in English?
-* Does the analysis include description and justification for any data transformations?
-* Does the document have a title that briefly summarizes the data analysis?
-* Does the document have a synopsis that describes and summarizes the data analysis in less than 10 sentences?
-* Is there a section titled "Data Processing" that describes how the data were loaded into R and processed for * ysis?
-* Is there a section titled "Results" where the main results are presented?
-* Is there at least one figure in the document that contains a plot?
-* Are there at most 3 figures in this document?
-* Does the analysis start from the raw data file (i.e. the original .csv.bz2 file)?
-* Does the analysis address the question of which types of events are most harmful to population health?
-* Does the analysis address the question of which types of events have the greatest economic consequences?
-* Do all the results of the analysis (i.e. figures, tables, numerical summaries) appear to be reproducible?
-* Do the figure(s) have descriptive captions (i.e. there is a description near the figure of what is happening in the * re)?
-* As far as you can determine, does it appear that the work submitted for this project is the work of the student who submitted it?
-
-
-
 ## Synopsis
 This report deals with the effects of severe weather events and gives some implications for future countermeasures.
 Using the *Storm Data* from the National Weather Service, we investigate which types of weather events have the biggest impact on the health of the population and economic consequences.
+The data was collected during the period from 1950 till 2011.
+For this we use the raw data and compute some scores to compare each type of event which leads to a ranking.
+The analysis shows that *floods* have the highest economic impact, while *tornados* pose the most severe threat towards public health.
+The insights could be used to devise some countermeasures to reduce the impacts of the events.
 
-Zusammenfassung...
-Does the document have a synopsis that describes and summarizes the data analysis in less than 10 sentences?
 
 ## Used packages
 
 ```{r packages, message=FALSE}
+library(knitr)
 library(dplyr)
+library(lubridate)
 library(data.table)
 library(ggplot2)
 ```
 
 
 ## Data Processing
-We download the data from the website (or use the code below to download it) and load it into *R*.
-```{r data-processing}
+We download the data (for an explaination of the raw data see [here](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)) from the website (or use the code below to download it) and load it into *R*.
+```{r data-loading, cache = TRUE}
 url <-"https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
 datafile <- "repdata_data_StormData.csv.bz2"
 if (!file.exists(datafile)) {
   download.file(url, datafile)
 }
   
-# TODO: Check fread possibility to load the zipped file!
 data_raw <- read.csv("repdata_data_StormData.csv.bz2")
+```
 
-# TODO: Convert the costs to one exponent (i.e. 25K = 25.000)
+The raw data for the property and crop damages are stored by using a variable for the numeric value and one which expresses the exponent (e.g. *K* for a multiplication with 1000).
+In order to have a concise tidy data we add two additional variables which hold the correct value of the damages taking the exponent into account.
+
+```{r data-processing, cache = TRUE}
 data <- data.table(data_raw)
 data <- data %>% mutate(property_damage = 0.0, crop_damage = 0.0)
 
 exponents_list <- list(list("K", 1000), list("M", 1000000), list("B", 1000000000), 
-                       list("k", 1000), list("m", 1000000), list("b", 1000000000), list("",1))
+                       list("k", 1000), list("m", 1000000), list("b", 1000000000), 
+                       list("h", 100), list("H", 100), list("", 1), list("0", 1),
+                       list("1", 10), list("2", 10^2), list("3", 10^3), list("4", 10^4),
+                       list("5", 10^5), list("6", 10^6), list("7", 10^7), list("8", 10^8),
+                       list("9", 10^9), list("?", 1), list("+", 1), list("-", 1)
+                       )
 
-for(i in exponents_list){
-  exponent_identifier <- i[[1]]
-  exponent_multiplier <- i[[2]]
-  data[data$PROPDMGEXP==exponent_identifier,"property_damage"] <- data[data$PROPDMGEXP==exponent_identifier,"PROPDMG"] * exponent_multiplier
-  data[data$CROPDMGEXP==exponent_identifier,"crop_damage"] <- data[data$CROPDMGEXP==exponent_identifier,"CROPDMG"] * exponent_multiplier
+for(i in exponents_list) {
+    exponent_identifier <- i[[1]]
+    exponent_multiplier <- i[[2]]
+    data[data$PROPDMGEXP == exponent_identifier, "property_damage"] <-
+        data[data$PROPDMGEXP == exponent_identifier, "PROPDMG"] * exponent_multiplier
+    data[data$CROPDMGEXP == exponent_identifier, "crop_damage"] <-
+        data[data$CROPDMGEXP == exponent_identifier, "CROPDMG"] * exponent_multiplier
 }
-
-
-```
-
-In order to be able to compare the different weather events to each other, we use an aggregated score for harmfulness towards public health.
-This score is computed from the number of deaths and injuries that originate from each event.
-```{r health_score}
-death_factor <- 5.0
-injury_factor <- 1.0
-data <- data %>% mutate(health_impact_score = death_factor * FATALITIES + injury_factor * INJURIES)
 ```
 
 For the economic impact we use the sum of the property damage and the crop damage which is stored in the variable *economy_damage*
@@ -86,20 +71,112 @@ For the economic impact we use the sum of the property damage and the crop damag
 data <- data %>% mutate(economy_damage = property_damage + crop_damage)
 ```
 
+Furthermore, to be able to compare the different weather events to each other, we use an aggregated score for harmfulness towards public health.
+This score is computed from the number of deaths and injuries that originate from each event and is stored in the variable *health_impact_score*.
+For the sake of simplicity we rate a death ten times more severe as an injury.
+The reader might want to adjust the score to her/his needs.
+```{r health_score}
+death_factor <- 22.0
+injury_factor <- 1.0
+data <- data %>% mutate(health_impact_score = death_factor * FATALITIES + injury_factor * INJURIES)
+```
+
+### Interdependency between injuries and fatalities
+Our weights for the health score is based on the observation that fatalities and injuries are correlated which we quickly discuss in the following section.
+We calculate a simple linear regression between fatalities and injuries to see that these are indeed correlated.
+```{r correlation_fatalities_injuries}
+correlation_fatalities_injuries <- lm(FATALITIES ~ INJURIES, data = data)
+summary(correlation_fatalities_injuries)
+```
+Here we see that about 22 (1/0.0453207 = 22.06497) injuries correspond to one fatality, hence the weights we defined above.
+
+
 ## Results
+The results are split into two subsections.
+The first deals with the economic impact while the second sheds some light on the health impact of the events.
+
+### Economic impact
+To get an overview of the economic impact of each type of weather event we group the data and compute some basic statistics for each type.
+More precisely, we report for each type of events the overall *number* of events, the *sum* of the economic impact for all events in the data set, the *mean*, the *standard deviation*, and the *mean absolute deviation*.
 
 ```{r economic_impact}
-eco_summary <- data %>% group_by(EVTYPE) %>% summarize(number_of_events = n(), sum_economic_damage = sum(economy_damage), mean_economic_damage = mean(economy_damage), sd_economic_damage = sd(economy_damage), mad_economic_damage = mad(economy_damage)) %>% arrange(desc(mean_economic_damage))
+eco_summary <-
+    data %>% group_by(EVTYPE) %>% summarize(
+    number_of_events = n(),
+    sum_economic_damage = sum(economy_damage),
+    mean_economic_damage = mean(economy_damage),
+    sd_economic_damage = sd(economy_damage),
+    mad_economic_damage = mad(economy_damage)
+    )
+```
+One could put the emphasis on the sum of all economic damage that was caused by all occurences of one event type.
+In the following we present the ten event types with the highest sum of economic damage.
+```{r}
+kable(head(eco_summary %>% arrange(desc(sum_economic_damage)), 10))
+```
+
+In this case we see that **floods** have the highest sum of economic damages in the data set.
+A graphical representation is depicted in the following figure.
+```{r eco_plot}
+top_eco_events <- head(eco_summary %>% arrange(desc(sum_economic_damage)), 10)
+g <- ggplot(data = top_eco_events, aes(x=reorder(EVTYPE, sum_economic_damage), y=sum_economic_damage))
+g + geom_bar(stat = "identity") + coord_flip() + labs(title = "Events with highest economic impact", y="Economic damage [US $]", x = "Event type")
 ```
 
 
-
+### Health impact
+Analogously as for the economic impact we create a summary table of the public health related variables.
+Here we report for each event type the *number* of events, the *sum*, the *mean*, the *standard deviation*, and the *mean absolute deviation* for fatalities, injuries and our above defined health impact score.
 ```{r health_impact}
-health_summary <- data %>% group_by(EVTYPE) %>% summarize(number_of_events = n(), sum_deaths = sum(FATALITIES), sum_injuries = sum(INJURIES), mean_deaths = mean(FATALITIES), mean_injuries = mean(INJURIES), sd_deaths = sd(FATALITIES), sd_injuries = sd(INJURIES), mad_deaths = mad(FATALITIES), mad_injuries = mad(INJURIES), sum_score = sum(health_impact_score), mean_score = mean(health_impact_score), sd_score = sd(health_impact_score), mad_score = mad(health_impact_score))
+health_summary <-
+    data %>% group_by(EVTYPE) %>% summarize(
+    number_of_events = n(),
+    sum_deaths = sum(FATALITIES),
+    sum_injuries = sum(INJURIES),
+    mean_deaths = mean(FATALITIES),
+    mean_injuries = mean(INJURIES),
+    sd_deaths = sd(FATALITIES),
+    sd_injuries = sd(INJURIES),
+    mad_deaths = mad(FATALITIES),
+    mad_injuries = mad(INJURIES),
+    sum_score = sum(health_impact_score),
+    mean_score = mean(health_impact_score),
+    sd_score = sd(health_impact_score),
+    mad_score = mad(health_impact_score)
+    )
 ```
+
+Again, we can consider a ranking based on the sum of the health impact score which results in the following table.
+```{r}
+kable(head(
+    health_summary %>% arrange(desc(sum_score)) %>%
+    select(EVTYPE,
+           number_of_events,
+           sum_deaths,
+           sum_injuries,
+           sum_score,
+           mean_score),
+    10
+    ))
+```
+
+Here we see that **tornados** have the highest sum of the health impact score which corresponds to the high number of fatalities and injuries.
+A graphical representation is depicted in the following figure.
+```{r health_plot}
+top_health_events <- head(health_summary %>% arrange(desc(sum_score)), 10)
+g <- ggplot(data = top_health_events, aes(x=reorder(EVTYPE, sum_score), y=sum_score))
+g + geom_bar(stat = "identity") + coord_flip() + labs(title = "Events with highest health impact", y="Health score", x = "Event type")
+```
+
+
+## Discussion and outlook
+While this analysis gives some insights on the types of weather events with the highest impact in both economy and public health, a more thourough investigation should be done in order to decide which countermeasure should be put in place.
+A time plot of the impact could be one point to see whether events have already been addressed in the near past.
+In addition, we suggest to look for countermeasures that address more than one type of weather event to efficiently invest money.
+
 
 ## Appendix
-
+For the sake of completeness we report the computer setup that was used for gerenating this report.
 ### System setup and used package versions
 ```{r}
 sessionInfo()
